@@ -16,9 +16,6 @@
 
 #if defined(USE_DSHOT_DMA_DRIVER)
 
-#define DSHOT_TIME profile.motor.dshot_time
-#define DSHOT_SYMBOL_TIME (PWM_CLOCK_FREQ_HZ / (3 * DSHOT_TIME * 1000) - 1)
-
 #define DSHOT_CMD_BEEP1 1
 #define DSHOT_CMD_BEEP2 2
 #define DSHOT_CMD_BEEP3 3
@@ -28,8 +25,19 @@
 #define DSHOT_CMD_ROTATE_NORMAL 20
 #define DSHOT_CMD_ROTATE_REVERSE 21
 
+#define DSHOT_FREQ profile.motor.dshot_time
+#define DSHOT_SYMBOL_FREQ (PWM_CLOCK_FREQ_HZ / (3 * DSHOT_FREQ * 1000 - 1))
+
+#define DSHOT_DMA_BUFFER_SIZE (3 * (16 + 1))
+
+#define GCR_FREQ (DSHOT_FREQ * (5 / 4))
+#define GCR_SYMBOL_FREQ (PWM_CLOCK_FREQ_HZ / (3 * GCR_FREQ * 1000 - 1))
+
+// 30us delay, 5us buffer, 21 bits for worst case
+#define GCR_SYMBOL_TIME_MAX ((DSHOT_FREQ_MAX * (5 / 4)) * 3)
+#define GCR_DMA_BUFFER_SIZE (((30 + 5) * GCR_SYMBOL_TIME_MAX) / 1000 + 21 * 3)
+
 #define DSHOT_MAX_PORT_COUNT 3
-#define DSHOT_DMA_BUFFER_SIZE (3 * (16 + 2))
 
 #define DSHOT_DIR_CHANGE_IDLE_TIME_US 10000
 #define DSHOT_DIR_CHANGE_CMD_TIME_US 1000
@@ -65,6 +73,7 @@ static motor_direction_t motor_dir = MOTOR_FORWARD;
 
 static uint32_t pwm_failsafe_time = 1;
 static uint32_t dir_change_time = 0;
+static bool dshot_inverted = true;
 
 volatile uint32_t dshot_dma_phase = 0; // 0: idle, 1 - (gpio_port_count + 1): handle port n
 
@@ -85,7 +94,7 @@ static dshot_gpio_port_t gpio_ports[DSHOT_MAX_PORT_COUNT] = {
     },
 };
 
-static volatile DMA_RAM uint32_t port_dma_buffer[DSHOT_MAX_PORT_COUNT][DSHOT_DMA_BUFFER_SIZE];
+static volatile DMA_RAM uint32_t port_dma_buffer[DSHOT_MAX_PORT_COUNT][GCR_DMA_BUFFER_SIZE];
 
 #define MOTOR_PIN(_port, _pin, pin_af, timer, timer_channel) \
   {                                                          \
@@ -99,7 +108,7 @@ static motor_pin_t motor_pins[MOTOR_PIN_MAX] = {MOTOR_PINS};
 
 #undef MOTOR_PIN
 
-static void dshot_init_motor_pin(uint32_t index) {
+static void dshot_init_motor_pin_output(uint32_t index) {
   LL_GPIO_InitTypeDef gpio_init;
   gpio_init.Mode = LL_GPIO_MODE_OUTPUT;
   gpio_init.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
@@ -107,7 +116,20 @@ static void dshot_init_motor_pin(uint32_t index) {
   gpio_init.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
   gpio_init.Pin = motor_pins[index].pin;
   LL_GPIO_Init(motor_pins[index].port, &gpio_init);
-  LL_GPIO_ResetOutputPin(motor_pins[index].port, motor_pins[index].pin);
+}
+
+static void dshot_init_motor_pin_input(uint32_t index) {
+  LL_GPIO_InitTypeDef gpio_init;
+  gpio_init.Mode = LL_GPIO_MODE_INPUT;
+  gpio_init.OutputType = LL_GPIO_OUTPUT_OPENDRAIN;
+  gpio_init.Pull = LL_GPIO_PULL_NO;
+  gpio_init.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+  gpio_init.Pin = motor_pins[index].pin;
+  LL_GPIO_Init(motor_pins[index].port, &gpio_init);
+}
+
+static void dshot_init_motor_pin(uint32_t index) {
+  dshot_init_motor_pin_output(index);
 
   for (uint8_t i = 0; i < DSHOT_MAX_PORT_COUNT; i++) {
     if (gpio_ports[i].gpio == motor_pins[index].port || i == gpio_port_count) {
@@ -212,7 +234,7 @@ void motor_init() {
 
   LL_TIM_InitTypeDef tim_init;
   LL_TIM_StructInit(&tim_init);
-  tim_init.Autoreload = DSHOT_SYMBOL_TIME;
+  tim_init.Autoreload = DSHOT_SYMBOL_FREQ;
   tim_init.Prescaler = 0;
   tim_init.ClockDivision = 0;
   tim_init.CounterMode = LL_TIM_COUNTERMODE_UP;
@@ -266,7 +288,9 @@ static void make_packet(uint8_t number, uint16_t value, bool telemetry) {
     csum_data >>= 4;
   }
 
+  csum = ~csum;
   csum &= 0xf;
+
   // append checksum
   dshot_packet[number] = (packet << 4) | csum;
 }
@@ -281,22 +305,27 @@ static void make_packet_all(uint16_t value, bool telemetry) {
 static void dshot_dma_start() {
   motor_wait_for_ready();
 
-  for (uint32_t j = 0; j < gpio_port_count; j++) {
-    // set all ports to low before and after the packet
-    port_dma_buffer[j][0] = gpio_ports[j].port_low;
-    port_dma_buffer[j][1] = gpio_ports[j].port_low;
-    port_dma_buffer[j][2] = gpio_ports[j].port_low;
+  for (uint32_t i = 0; i < MOTOR_PIN_MAX; i++) {
+    dshot_init_motor_pin_output(i);
+  }
 
-    port_dma_buffer[j][16 * 3 + 0] = gpio_ports[j].port_low;
-    port_dma_buffer[j][16 * 3 + 1] = gpio_ports[j].port_low;
-    port_dma_buffer[j][16 * 3 + 2] = gpio_ports[j].port_low;
+  for (uint32_t j = 0; j < gpio_port_count; j++) {
+    const uint32_t reset_mask = dshot_inverted ? gpio_ports[j].port_high : gpio_ports[j].port_low;
+
+    // set all ports to low before and after the packet
+    port_dma_buffer[j][0] = reset_mask;
+    port_dma_buffer[j][1] = reset_mask;
+    port_dma_buffer[j][2] = reset_mask;
   }
 
   for (uint8_t i = 0; i < 16; i++) {
     for (uint32_t j = 0; j < gpio_port_count; j++) {
-      port_dma_buffer[j][(i + 1) * 3 + 0] = gpio_ports[j].port_high; // start bit
-      port_dma_buffer[j][(i + 1) * 3 + 1] = 0;                       // actual bit, set below
-      port_dma_buffer[j][(i + 1) * 3 + 2] = gpio_ports[j].port_low;  // return line to low
+      const uint32_t set_mask = dshot_inverted ? gpio_ports[j].port_low : gpio_ports[j].port_high;
+      const uint32_t reset_mask = dshot_inverted ? gpio_ports[j].port_high : gpio_ports[j].port_low;
+
+      port_dma_buffer[j][(i + 1) * 3 + 0] = set_mask;   // start bit
+      port_dma_buffer[j][(i + 1) * 3 + 1] = 0;          // actual bit, set below
+      port_dma_buffer[j][(i + 1) * 3 + 2] = reset_mask; // return line to low
     }
 
     for (uint8_t motor = 0; motor < MOTOR_PIN_MAX; motor++) {
@@ -304,11 +333,14 @@ static void dshot_dma_start() {
       const uint32_t motor_high = (motor_pins[motor].pin);
       const uint32_t motor_low = (motor_pins[motor].pin << 16);
 
+      const uint32_t set_mask = dshot_inverted ? motor_low : motor_high;
+      const uint32_t reset_mask = dshot_inverted ? motor_high : motor_low;
+
       const bool bit = dshot_packet[motor] & 0x8000;
 
       // for 1 hold the line high for two timeunits
       // first timeunit is already applied
-      port_dma_buffer[port][(i + 1) * 3 + 1] |= bit ? motor_high : motor_low;
+      port_dma_buffer[port][(i + 1) * 3 + 1] |= bit ? set_mask : reset_mask;
 
       dshot_packet[motor] <<= 1;
     }
@@ -454,6 +486,12 @@ void dshot_dma_isr(dma_device_t dev) {
     dshot_disable_dma_request(gpio_ports[j].timer_channel);
 
     dshot_dma_phase--;
+
+    if (dshot_dma_phase == 0) {
+      for (uint32_t i = 0; i < MOTOR_PIN_MAX; i++) {
+        dshot_init_motor_pin_input(i);
+      }
+    }
     break;
   }
 }

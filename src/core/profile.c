@@ -140,7 +140,7 @@ const profile_t default_profile = {
 #endif
         .motor_limit = MOTOR_LIMIT,
         .digital_idle = DIGITAL_IDLE,
-        .dshot_time = DSHOT_TIME_600,
+        .dshot_time = DSHOT_FREQ_600,
 
 #ifdef TORQUE_BOOST
         .torque_boost = TORQUE_BOOST,

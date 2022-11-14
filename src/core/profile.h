@@ -181,15 +181,16 @@ typedef enum {
 } gyro_rotation_t;
 
 typedef enum {
-  DSHOT_TIME_150 = 150,
-  DSHOT_TIME_300 = 300,
-  DSHOT_TIME_600 = 600,
-} dshot_time_t;
+  DSHOT_FREQ_150 = 150,
+  DSHOT_FREQ_300 = 300,
+  DSHOT_FREQ_600 = 600,
+  DSHOT_FREQ_MAX = 600,
+} dshot_freq_t;
 
 typedef struct {
   float digital_idle;
   float motor_limit;
-  dshot_time_t dshot_time;
+  dshot_freq_t dshot_time;
   uint8_t invert_yaw;
   uint8_t gyro_orientation;
   float torque_boost;
