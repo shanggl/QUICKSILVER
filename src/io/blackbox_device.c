@@ -93,7 +93,7 @@ void blackbox_device_reset() {
   blackbox_device_header.magic = BLACKBOX_HEADER_MAGIC;
   blackbox_device_header.file_num = 0;
 
-  looptime_reset();
+  task_reset_runtime();
 }
 
 bool blackbox_device_restart(uint32_t field_flags, uint32_t blackbox_rate, uint32_t looptime) {
