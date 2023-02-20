@@ -7,7 +7,7 @@
 #include "rx/rx.h"
 #include "util/vector.h"
 
-#define PROFILE_VERSION MAKE_SEMVER(0, 2, 1)
+#define PROFILE_VERSION MAKE_SEMVER(0, 2, 2)
 
 // Rates
 typedef enum {
@@ -308,6 +308,7 @@ typedef struct {
   uint8_t dterm_dynamic_enable;
   float dterm_dynamic_min;
   float dterm_dynamic_max;
+  uint8_t gyro_dynamic_notch_enable;
 } profile_filter_t;
 
 #define FILTER_MEMBERS                                              \
@@ -317,6 +318,7 @@ typedef struct {
   MEMBER(dterm_dynamic_enable, uint8)                               \
   MEMBER(dterm_dynamic_min, float)                                  \
   MEMBER(dterm_dynamic_max, float)                                  \
+  MEMBER(gyro_dynamic_notch_enable, uint8)                          \
   END_STRUCT()
 
 typedef struct {
