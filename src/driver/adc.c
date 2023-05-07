@@ -82,7 +82,9 @@ static const adc_channel_t adc_channel_map[] = {
     {.pin = PIN_C2, .dev = ADC_DEVICE_1, .channel = LL_ADC_CHANNEL_12},
     {.pin = PIN_C3, .dev = ADC_DEVICE_1, .channel = LL_ADC_CHANNEL_13},
     {.pin = PIN_C4, .dev = ADC_DEVICE_1, .channel = LL_ADC_CHANNEL_14},
+#ifndef STM32F7
     {.pin = PIN_C5, .dev = ADC_DEVICE_1, .channel = LL_ADC_CHANNEL_15},
+#endif
     {.pin = PIN_B0, .dev = ADC_DEVICE_1, .channel = LL_ADC_CHANNEL_8},
     {.pin = PIN_B1, .dev = ADC_DEVICE_1, .channel = LL_ADC_CHANNEL_9},
     {.pin = PIN_A0, .dev = ADC_DEVICE_1, .channel = LL_ADC_CHANNEL_0},
