@@ -123,24 +123,57 @@ for device in devices:
     print("#ifdef %s" % (device[:-2].upper()))
     for driver in cache.get_all_drivers("gpio"):
         for pin in driver["gpio"]:
-            name = (pin["port"] + pin["pin"]).upper()
+            print("GPIO_PIN(%s, %s)" % (pin["port"].upper(), pin["pin"]))
 
             timer = []
             spi = []
+            serial = []
             if "signal" in pin:
                 for s in pin["signal"]:
                     if s["driver"] == "tim" and s["name"].startswith("ch"):
-                        timer.append(
+                        print(
                             (
-                                "TIM(%s, %s, %s)" % (s["instance"], s["name"], s["af"])
+                                "GPIO_AF(PIN_%s%s, %s, TIMER_TAG(TIMER%s, TIMER_%s))"
+                                % (
+                                    pin["port"],
+                                    pin["pin"],
+                                    s["af"],
+                                    s["instance"],
+                                    s["name"],
+                                )
                             ).upper()
                         )
-                    if s["driver"] == "spi":
-                        spi.append(("SPI(%s, %s)" % (s["instance"], s["af"])).upper())
 
-            print(
-                "GPIO_PIN(%s, %s, (%s), (%s))"
-                % (pin["port"].upper(), pin["pin"], ", ".join(timer), ", ".join(spi))
-            )
+                    if s["driver"] == "spi" and (
+                        s["name"] == "sck" or s["name"] == "mosi" or s["name"] == "miso"
+                    ):
+                        print(
+                            (
+                                "GPIO_AF(PIN_%s%s, %s, SPI_TAG(SPI_PORT%s, RES_SPI_%s))"
+                                % (
+                                    pin["port"],
+                                    pin["pin"],
+                                    s["af"],
+                                    s["instance"],
+                                    s["name"],
+                                )
+                            ).upper()
+                        )
+                    if (s["driver"] == "uart" or s["driver"] == "usart") and (
+                        s["name"] == "rx" or s["name"] == "tx"
+                    ):
+                        print(
+                            (
+                                "GPIO_AF(PIN_%s%s, %s, SERIAL_TAG(SERIAL_PORT%s, RES_SERIAL_%s))"
+                                % (
+                                    pin["port"],
+                                    pin["pin"],
+                                    s["af"],
+                                    s["instance"],
+                                    s["name"],
+                                )
+                            ).upper()
+                        )
+
     print("#endif")
     print()
