@@ -85,8 +85,7 @@
 // #define RX_CRSF
 // #define RX_IBUS
 // #define RX_FPORT
-// #define RX_DSMX
-// #define RX_DSM2
+// #define RX_DSM
 
 // *************Serial Receiver UART Selection (uncomment all for default from target or if using spi receiver)																		//todo:  Many missing usart AF setups, So plenty more to do here
 // #define RX_USART USART_PORT1
