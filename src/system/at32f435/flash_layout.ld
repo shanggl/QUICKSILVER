@@ -25,19 +25,28 @@ ENTRY(Reset_Handler)
 _estack = 0x20060000;    /* end of RAM */
 
 /* Generate a link error if heap and stack don't fit into RAM */
-_Min_Heap_Size = 0x200;      /* required amount of heap  */
-_Min_Stack_Size = 0x400; /* required amount of stack */
+_Min_Heap_Size = 0;      /* required amount of heap  */
+_Min_Stack_Size = 0x4000; /* required amount of stack */
 
 /* Specify the memory areas */
 MEMORY
 {
-FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 1000K
-RAM (xrw)       : ORIGIN = 0x20000000, LENGTH = 384K
+FLASH (rx)        : ORIGIN = 0x08000000, LENGTH = 64K
+FLASH_CONFIG (r)  : ORIGIN = 0x08010000, LENGTH = 64K
+FLASH_CODE   (rx) : ORIGIN = 0x08020000, LENGTH = 872K
+RAM (xrw)         : ORIGIN = 0x20000000, LENGTH = 384K
 }
 
 /* Define output sections */
 SECTIONS
 {
+  .config_flash  :
+  {
+    _config_flash_start = .;
+    KEEP(*(.config_flash))
+    _config_flash_end = .;
+  } >FLASH_CONFIG
+
   /* The startup code goes first into FLASH */
   .isr_vector :
   {
@@ -61,7 +70,7 @@ SECTIONS
 
     . = ALIGN(4);
     _etext = .;        /* define a global symbols at end of code */
-  } >FLASH
+  } >FLASH_CODE
 
   /* Constant data goes into FLASH */
   .rodata :
