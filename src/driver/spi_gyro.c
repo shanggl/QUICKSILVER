@@ -7,6 +7,7 @@
 #include "driver/spi_bmi270.h"
 #include "driver/spi_icm42605.h"
 #include "driver/spi_mpu6xxx.h"
+#include "driver/spi_asm330.h"
 
 #ifdef USE_GYRO
 
@@ -44,6 +45,11 @@ static gyro_types_t gyro_spi_detect() {
 
   case GYRO_TYPE_BMI270:
     type = bmi270_detect();
+    if (type != GYRO_TYPE_INVALID) {
+      break;
+    }
+  case GYRO_TYPE_ASM330:
+    type = st_asm330_detect();
     if (type != GYRO_TYPE_INVALID) {
       break;
     }
@@ -95,6 +101,9 @@ uint8_t gyro_spi_init() {
 
   case GYRO_TYPE_BMI270:
     bmi270_configure();
+    break;
+  case GYRO_TYPE_ASM330:
+    st_asm330_configure();
     break;
 
   default:
@@ -150,6 +159,23 @@ gyro_data_t gyro_spi_read() {
 
   case GYRO_TYPE_BMI270: {
     bmi270_read_gyro_data(&data);
+    break;
+  }
+
+  case GYRO_TYPE_ASM330: {
+    uint8_t buf[14];
+    st_asm330_read_data(ASM330LHH_REG_OUT_TEMP_L, buf, 14);
+
+    data.temp = (float)((int16_t)((buf[1] << 8) | buf[0])) / 132.48f + 25.f;
+
+    data.gyro.axis[1] = (int16_t)((buf[3] << 8) | buf[2]); //x pitch
+    data.gyro.axis[0] = (int16_t)((buf[5] << 8) | buf[4]); //y roll
+    data.gyro.axis[2] = (int16_t)((buf[7] << 8) | buf[8]); //z yaw
+
+    data.accel.axis[0] = -(int16_t)((buf[9] << 8) | buf[8]);//pitch x
+    data.accel.axis[1] = -(int16_t)((buf[11] << 8) | buf[10]);//roll y 
+    data.accel.axis[2] = (int16_t)((buf[13] << 8) | buf[12]);//yaw x
+
     break;
   }
 
